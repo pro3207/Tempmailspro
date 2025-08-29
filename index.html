@@ -1,1 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TempMail Clone</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; }
+    #email { font-weight: bold; font-size: 18px; margin: 10px; }
+    button { padding: 10px 15px; margin: 5px; border: none; background: #007bff; color: #fff; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    #inbox { margin-top: 20px; text-align: left; width: 80%; margin-left: auto; margin-right: auto; }
+    .mail { padding: 10px; border: 1px solid #ccc; margin: 5px 0; background: #fff; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Disposable Temp Mail</h1>
+  <p id="email">Click generate to get email</p>
+  <button onclick="generateEmail()">Generate New Email</button>
+  <button onclick="loadInbox()">Refresh Inbox</button>
+  <div id="inbox"></div>
 
+  <script>
+    let currentEmail = "";
+    let login = "";
+    let domain = "";
+    const proxy = "https://cors-anywhere.herokuapp.com/";
+
+    async function generateEmail() {
+      try {
+        let res = await fetch(proxy + "https://www.1secmail.com/api/v1/?action=genRandomMailbox&count=1");
+        let data = await res.json();
+        currentEmail = data[0];
+        document.getElementById("email").innerText = currentEmail;
+        [login, domain] = currentEmail.split("@");
+      } catch (e) {
+        document.getElementById("email").innerText = "⚠️ Failed to generate email!";
+      }
+    }
+
+    async function loadInbox() {
+      if (!currentEmail) {
+        alert("Please generate email first!");
+        return;
+      }
+      try {
+        let res = await fetch(proxy + `https://www.1secmail.com/api/v1/?action=getMessages&login=${login}&domain=${domain}`);
+        let messages = await res.json();
+        let inbox = document.getElementById("inbox");
+        inbox.innerHTML = "";
+        if (messages.length === 0) {
+          inbox.innerHTML = "<p>No emails yet.</p>";
+        } else {
+          messages.forEach(m => {
+            let div = document.createElement("div");
+            div.className = "mail";
+            div.innerHTML = `<b>From:</b> ${m.from}<br><b>Subject:</b> ${m.subject}<br><b>Date:</b> ${m.date}`;
+            inbox.appendChild(div);
+          });
+        }
+      } catch (e) {
+        alert("⚠️ Failed to load inbox!");
+      }
+    }
+  </script>
+</body>
+</html>
