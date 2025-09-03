@@ -1,1 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Temp Mail — Mobile Version</title>
+  <style>
+    body { font-family: sans-serif; margin:0; background:#0b1220; color:#e6e6e6; }
+    header { padding:16px; background:#1b2a4b; }
+    h1 { margin:0; font-size:22px; }
+    .controls, .inbox, .viewer { padding:16px; }
+    input { width:100%; padding:10px; border-radius:8px; border:1px solid #333; margin:8px 0; background:#0a1329; color:#fff; }
+    button { padding:10px 14px; border-radius:8px; border:none; background:#1e3a8a; color:#fff; cursor:pointer; margin:4px 0; }
+    button:hover { filter:brightness(1.1); }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th,td { border-bottom:1px solid #333; padding:8px; font-size:14px; }
+    tr:hover { background:#111a2f; cursor:pointer; }
+    iframe { width:100%; height:200px; border:0; margin-top:10px; background:#fff; }
+    pre { white-space:pre-wrap; background:#111a2f; padding:10px; border-radius:8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📧 Temp Mail (Mobile)</h1>
+    <p>Generate disposable email, check inbox, read mails.</p>
+  </header>
 
+  <div class="controls">
+    <button id="btn-generate">Generate New Email</button>
+    <input id="email" readonly placeholder="Your temp email will appear here">
+    <button id="btn-copy">Copy Email</button>
+    <button id="btn-refresh">Refresh Inbox</button>
+    <p id="status">No inbox yet.</p>
+  </div>
+
+  <div class="inbox">
+    <h2>Inbox</h2>
+    <table>
+      <thead><tr><th>From</th><th>Subject</th><th>Time</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty">No messages yet.</p>
+  </div>
+
+  <div class="viewer">
+    <h2>Message</h2>
+    <div id="meta"></div>
+    <iframe id="html-body"></iframe>
+    <pre id="text-body"></pre>
+  </div>
+
+<script>
+const proxy = "https://cors-anywhere.herokuapp.com/";
+const base = "https://api.mail.tm";
+
+let state = { address:null, token:null, id:null };
+
+async function generateInbox() {
+  document.getElementById("status").textContent = "Generating email...";
+  try {
+    // get domains
+    const doms = await fetch(proxy+base+"/domains").then(r=>r.json());
+    const list = doms["hydra:member"];
+    const domain = list[Math.floor(Math.random()*list.length)].domain;
+    const local = Math.random().toString(36).slice(2,7)+Date.now().toString().slice(-3);
+    const address = `${local}@${domain}`;
+    const password = Math.random().toString(36);
+
+    // create account
+    await fetch(proxy+base+"/accounts",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({address,password})});
+
+    // get token
+    const t = await fetch(proxy+base+"/token",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({address,password})}).then(r=>r.json());
+
+    state = { address, token:t.token };
+    document.getElementById("email").value = address;
+    document.getElementById("status").textContent = "Email ready. Waiting for mails...";
+    refreshInbox();
+  } catch(e) {
+    console.error(e);
+    document.getElementById("status").textContent = "Failed to create inbox.";
+  }
+}
+
+async function refreshInbox() {
+  if (!state.token) return;
+  document.getElementById("status").textContent = "Refreshing inbox...";
+  try {
+    const data = await fetch(proxy+base+"/messages",{headers:{Authorization:"Bearer "+state.token}}).then(r=>r.json());
+    const rows = data["hydra:member"] || [];
+    const tbody = document.getElementById("rows");
+    tbody.innerHTML="";
+    if (!rows.length) {
+      document.getElementById("empty").style.display="block";
+    } else {
+      document.getElementById("empty").style.display="none";
+    }
+    rows.forEach(msg=>{
+      const tr=document.createElement("tr");
+      tr.innerHTML=`<td>${msg.from?.address||""}</td><td>${msg.subject||"(no subject)"}</td><td>${new Date(msg.createdAt).toLocaleTimeString()}</td>`;
+      tr.onclick=()=>openMessage(msg.id);
+      tbody.appendChild(tr);
+    });
+    document.getElementById("status").textContent = "Inbox updated.";
+  } catch(e) {
+    console.error(e);
+    document.getElementById("status").textContent = "Failed to refresh inbox.";
+  }
+}
+
+async function openMessage(id) {
+  try {
+    const m = await fetch(proxy+base+"/messages/"+id,{headers:{Authorization:"Bearer "+state.token}}).then(r=>r.json());
+    document.getElementById("meta").textContent = `${m.from?.address||""} → ${state.address} (${new Date(m.createdAt).toLocaleString()})`;
+    if (m.html && m.html.length) {
+      const doc=document.getElementById("html-body").contentDocument;
+      doc.open(); doc.write(m.html[0]); doc.close();
+      document.getElementById("text-body").textContent="";
+    } else {
+      document.getElementById("html-body").contentDocument.body.innerHTML="<p style='padding:10px'>No HTML body.</p>";
+      document.getElementById("text-body").textContent=m.text||"";
+    }
+  } catch(e){console.error(e);}
+}
+
+document.getElementById("btn-generate").onclick = generateInbox;
+document.getElementById("btn-refresh").onclick = refreshInbox;
+document.getElementById("btn-copy").onclick = ()=>{
+  const v=document.getElementById("email").value;
+  navigator.clipboard.writeText(v).then(()=>alert("Copied: "+v));
+};
+</script>
+</body>
+</html>
